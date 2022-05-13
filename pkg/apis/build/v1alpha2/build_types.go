@@ -92,7 +92,6 @@ type BuildPersistentVolumeCache struct {
 }
 
 // +k8s:openapi-gen=true
-// +k8s:deepcopy-gen=true
 type Services []corev1.ObjectReference
 
 // +k8s:openapi-gen=true

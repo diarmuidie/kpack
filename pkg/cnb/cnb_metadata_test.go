@@ -1,21 +1,16 @@
 package cnb_test
 
 import (
-	"context"
 	"testing"
 
 	ggcrv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/random"
+	"github.com/pivotal/kpack/pkg/cnb"
+	"github.com/pivotal/kpack/pkg/registry/imagehelpers"
+	"github.com/pivotal/kpack/pkg/registry/registryfakes"
 	"github.com/sclevine/spec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	buildapi "github.com/pivotal/kpack/pkg/apis/build/v1alpha2"
-	"github.com/pivotal/kpack/pkg/cnb"
-	"github.com/pivotal/kpack/pkg/registry"
-	"github.com/pivotal/kpack/pkg/registry/imagehelpers"
-	"github.com/pivotal/kpack/pkg/registry/registryfakes"
 )
 
 func TestMetadataRetriever(t *testing.T) {
@@ -24,33 +19,14 @@ func TestMetadataRetriever(t *testing.T) {
 
 func testMetadataRetriever(t *testing.T, when spec.G, it spec.S) {
 	var (
-		keychainFactory = &registryfakes.FakeKeychainFactory{}
-		imageFetcher    = registryfakes.NewFakeClient()
-		ctx             = context.Background()
+		imageFetcher = registryfakes.NewFakeClient()
 	)
 
 	when("RemoteMetadataRetriever", func() {
 		when("GetBuiltImage", func() {
-			var build = &buildapi.Build{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "namespace-name",
-				},
-				Spec: buildapi.BuildSpec{
-					Tags:               []string{"reg.io/appimage/name"},
-					ServiceAccountName: "service-account",
-				},
-				Status: buildapi.BuildStatus{},
-			}
-
 			when("images are built with lifecycle 0.5", func() {
-
 				it("retrieves the metadata from the registry", func() {
-					appImageSecretRef := registry.SecretRef{
-						ServiceAccount: build.Spec.ServiceAccountName,
-						Namespace:      build.Namespace,
-					}
 					appImageKeychain := &registryfakes.FakeKeychain{}
-					keychainFactory.AddKeychainForSecretRef(t, appImageSecretRef, appImageKeychain)
 
 					appImage := randomImage(t)
 					appImage, _ = imagehelpers.SetStringLabel(appImage, "io.buildpacks.build.metadata", `{"buildpacks": [{"id": "test.id", "version": "1.2.3"}]}`)
@@ -72,11 +48,11 @@ func testMetadataRetriever(t *testing.T, when spec.G, it spec.S) {
 					imageFetcher.AddImage("reg.io/appimage/name", appImage, appImageKeychain)
 
 					subject := cnb.RemoteMetadataRetriever{
-						KeychainFactory: keychainFactory,
-						ImageFetcher:    imageFetcher,
+						Keychain:     appImageKeychain,
+						ImageFetcher: imageFetcher,
 					}
 
-					result, err := subject.GetBuiltImage(ctx, build)
+					result, err := subject.GetBuiltImage("reg.io/appimage/name")
 					assert.NoError(t, err)
 
 					metadata := result.BuildpackMetadata
@@ -100,12 +76,7 @@ func testMetadataRetriever(t *testing.T, when spec.G, it spec.S) {
 			when("images are built with lifecycle 0.6+", func() {
 
 				it("retrieves the metadata from the registry", func() {
-					appImageSecretRef := registry.SecretRef{
-						ServiceAccount: build.Spec.ServiceAccountName,
-						Namespace:      build.Namespace,
-					}
 					appImageKeychain := &registryfakes.FakeKeychain{}
-					keychainFactory.AddKeychainForSecretRef(t, appImageSecretRef, appImageKeychain)
 
 					appImage := randomImage(t)
 					appImage, _ = imagehelpers.SetStringLabel(appImage, "io.buildpacks.build.metadata", `{"buildpacks": [{"id": "test.id", "version": "1.2.3"}]}`)
@@ -132,11 +103,11 @@ func testMetadataRetriever(t *testing.T, when spec.G, it spec.S) {
 					imageFetcher.AddImage("reg.io/appimage/name", appImage, appImageKeychain)
 
 					subject := cnb.RemoteMetadataRetriever{
-						KeychainFactory: keychainFactory,
-						ImageFetcher:    imageFetcher,
+						Keychain:     appImageKeychain,
+						ImageFetcher: imageFetcher,
 					}
 
-					result, err := subject.GetBuiltImage(context.Background(), build)
+					result, err := subject.GetBuiltImage("reg.io/appimage/name")
 					assert.NoError(t, err)
 
 					metadata := result.BuildpackMetadata

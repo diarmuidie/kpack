@@ -1,7 +1,6 @@
 package cnb
 
 import (
-	"context"
 	"time"
 
 	lifecyclebuildpack "github.com/buildpacks/lifecycle/buildpack"
@@ -9,44 +8,21 @@ import (
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	ggcrv1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/pkg/errors"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	buildapi "github.com/pivotal/kpack/pkg/apis/build/v1alpha2"
-	"github.com/pivotal/kpack/pkg/registry"
 	"github.com/pivotal/kpack/pkg/registry/imagehelpers"
+	"github.com/pkg/errors"
 )
-
-const (
-	BuilderMetadataLabel = "io.buildpacks.builder.metadata"
-)
-
-type FetchableBuilder interface {
-	metav1.ObjectMetaAccessor
-	Image() string
-	ImagePullSecrets() []v1.LocalObjectReference
-}
 
 type ImageFetcher interface {
 	Fetch(keychain authn.Keychain, repoName string) (ggcrv1.Image, string, error)
 }
 
 type RemoteMetadataRetriever struct {
-	KeychainFactory registry.KeychainFactory
-	ImageFetcher    ImageFetcher
+	Keychain     authn.Keychain
+	ImageFetcher ImageFetcher
 }
 
-func (r *RemoteMetadataRetriever) GetBuiltImage(ctx context.Context, build *buildapi.Build) (BuiltImage, error) {
-	keychain, err := r.KeychainFactory.KeychainForSecretRef(ctx, registry.SecretRef{
-		ServiceAccount: build.Spec.ServiceAccountName,
-		Namespace:      build.Namespace,
-	})
-	if err != nil {
-		return BuiltImage{}, errors.Wrap(err, "unable to create app image keychain")
-	}
-
-	appImage, appImageId, err := r.ImageFetcher.Fetch(keychain, build.Tag())
+func (r *RemoteMetadataRetriever) GetBuiltImage(tag string) (BuiltImage, error) {
+	appImage, appImageId, err := r.ImageFetcher.Fetch(r.Keychain, tag)
 	if err != nil {
 		return BuiltImage{}, errors.Wrap(err, "unable to fetch app image")
 	}
@@ -54,21 +30,8 @@ func (r *RemoteMetadataRetriever) GetBuiltImage(ctx context.Context, build *buil
 	return readBuiltImage(appImage, appImageId)
 }
 
-func (r *RemoteMetadataRetriever) GetCacheImage(ctx context.Context, build *buildapi.Build) (string, error) {
-	if !build.Spec.NeedRegistryCache() {
-		return "", nil
-	}
-
-	keychain, err := r.KeychainFactory.KeychainForSecretRef(ctx, registry.SecretRef{
-		ServiceAccount: build.Spec.ServiceAccountName,
-		Namespace:      build.Namespace,
-	})
-
-	if err != nil {
-		return "", err
-	}
-
-	_, cacheImageId, err := r.ImageFetcher.Fetch(keychain, build.Spec.Cache.Registry.Tag)
+func (r *RemoteMetadataRetriever) GetCacheImage(cacheTag string) (string, error) {
+	_, cacheImageId, err := r.ImageFetcher.Fetch(r.Keychain, cacheTag)
 	if err != nil {
 		return "", errors.Wrap(err, "unable to fetch cache image")
 	}
